@@ -1,0 +1,4 @@
+[submodule "main/thirdparty/mgba"]
+	path = main/thirdparty/mgba
+	url = git@github.com:SmartArduino/mgba.git
+	branch = esp32-port
