@@ -14,6 +14,8 @@ static const char *TAG = "rom_cache";
 
 static rom_cache_t s_cache;
 bool g_rom_cache_active;
+extern uint32_t g_rom_cache_fast_mask;
+extern uint32_t g_rom_cache_check_mask;
 #define s_active g_rom_cache_active
 
 // Slot 0 is permanently pinned to ROM page 0 (cartridge header).
@@ -203,6 +205,8 @@ bool rom_cache_init(const char *path, size_t cache_bytes)
     s_cache.hit_count = 0;
     s_cache.miss_count = 0;
     s_active = true;
+    g_rom_cache_fast_mask = 0xFFFFFFFFu;
+    g_rom_cache_check_mask = 0xFFFFFFFFu;
 
     // Pin page 0 into slot 0 (cartridge header / vectors / mGBA init reads).
     fseek(fp, 0, SEEK_SET);
@@ -252,6 +256,8 @@ void rom_cache_deinit(void)
     free(s_cache.slot_last_used);
     memset(&s_cache, 0, sizeof(s_cache));
     s_active = false;
+    g_rom_cache_fast_mask = 0;
+    g_rom_cache_check_mask = 0;
 }
 
 

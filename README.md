@@ -12,7 +12,7 @@
 - 支持电池存档，保存为 `/sdcard/<ROM 文件名>.sav`。
 - 支持 5 个即时存档槽，保存为 `/sdcard/<ROM 文件名>.ss0` 到 `.ss4`。
 - 支持可选 GBA BIOS 文件：`/sdcard/gba_bios.bin`。
-- 支持音频开关、音量调节、快进、跳帧、FPS 显示等运行时选项。
+- 支持 1x/2x 画面缩放、线性/最近邻滤镜、音频开关、音量调节、快进、跳帧、FPS 显示等运行时选项。
 - 设置会保存到 `/sdcard/esp-mgba.cfg`。
 
 ## 硬件和环境
@@ -119,17 +119,18 @@ idf.py build
 | 菜单按钮 | 功能 |
 | --- | --- |
 | `RESUME` | 返回游戏 |
-| `SCALE` | 切换画面缩放方式，`NN` 为 CPU 最近邻，`LIN` 为 PPA 线性过滤 |
 | `ROMS` | 回到 ROM 选择界面 |
 | `SAVE` | 保存当前即时存档槽，并返回游戏 |
 | `LOAD` | 读取当前即时存档槽，并返回游戏 |
 | `DELETE` | 删除当前即时存档槽 |
 | `SLOT-` / `SLOT+` | 在 S1 到 S5 之间切换即时存档槽 |
-| `FAST` | 开关快进 |
 | `AUDIO` | 开关音频 |
 | `VOL-` / `VOL+` | 音量减少或增加 10% |
+| `FAST` | 开关快进 |
 | `FSKIP` | 切换跳帧等级，范围 0 到 5 |
 | `FPS` | 开关 FPS 显示 |
+| `SCALE` | 切换画面缩放倍数，支持 `1x` 和 `2x`。`1x` 会直接显示原始 240x160 画面，不做放大 |
+| `LIN` / `NN` | 切换 2x 放大滤镜。`LIN` 为 PPA 线性过滤，`NN` 为最近邻像素放大 |
 | `BIOS` | 切换 BIOS 跳过/运行模式 |
 | `ASYNC` | 切换音频同步选项 |
 | `VSYNC` | 切换视频同步选项 |
@@ -142,6 +143,27 @@ S2 USED
 ```
 
 `EMPTY` 表示该槽位还没有存档，`USED` 表示该槽位已有即时存档文件。
+
+`FSKIP` 设置的是手动跳帧下限。当前构建还会根据实际 FPS 自动临时提高有效跳帧，性能恢复后再逐步降回手动设置值。
+
+## 配置文件
+
+设置保存在 `/sdcard/esp-mgba.cfg`，常用选项如下：
+
+```ini
+audio_enabled=0
+fast_forward=0
+audio_volume=80
+frameskip=1
+skip_bios=1
+audio_sync=0
+video_sync=0
+show_fps=0
+scale_linear=1
+game_scale=2
+```
+
+`game_scale=1` 表示原始 1x 显示，不执行放大；`game_scale=2` 表示 2x 放大。`scale_linear=1` 时 2x 使用线性滤镜，`scale_linear=0` 时使用最近邻滤镜。
 
 ## 注意事项
 

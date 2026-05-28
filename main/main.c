@@ -47,11 +47,16 @@
 
 #define GBA_WIDTH          240
 #define GBA_HEIGHT         160
-#define GBA_SCALE          2
+#define DEFAULT_GBA_SCALE  2
+#define MIN_GBA_SCALE      1
+#define MAX_GBA_SCALE      2
 #define GBA_FPS            60
 #define DEFAULT_FRAMESKIP  1
 #define MAX_FRAMESKIP      5
 #define DISPLAY_FRAME_DIV  1
+#define AUTO_FRAMESKIP     1
+#define AUTO_FSKIP_DOWN_FPS 57.0f
+#define AUTO_FSKIP_UP_FPS   59.5f
 #define ROM_DIR            "/sdcard"
 #define SETTINGS_PATH      ROM_DIR "/esp-mgba.cfg"
 #define ROM_PATH_MAX       256
@@ -96,6 +101,10 @@
 #define FONT_W             5
 #define FONT_H             7
 #define USE_PPA_GAME_SCALE 1
+#define GAME_MENU_X        188
+#define GAME_MENU_Y        36
+#define GAME_MENU_W        424
+#define GAME_MENU_H        432
 
 #define RGB565(r, g, b)    (uint16_t)((((r) & 0xF8) << 8) | (((g) & 0xFC) << 3) | (((b) & 0xF8) >> 3))
 #define KEY_MASK(key)      (1U << (key))
@@ -145,6 +154,7 @@ typedef enum {
     EMU_CMD_TOGGLE_VIDEO_SYNC,
     EMU_CMD_TOGGLE_SHOW_FPS,
     EMU_CMD_TOGGLE_SCALE_LINEAR,
+    EMU_CMD_CYCLE_SCALE,
     EMU_CMD_ROM_MENU,
 } emu_cmd_t;
 
@@ -173,21 +183,22 @@ static const pad_button_t s_buttons[] = {
 };
 
 static const menu_button_t s_menu_buttons[] = {
-    { "RESUME",  EMU_CMD_RESUME,             208,  84, 118, 36, RGB565(44, 72, 74) },
-    { "SCALE",   EMU_CMD_TOGGLE_SCALE_LINEAR,340,  84, 118, 36, RGB565(84, 78, 108) },
-    { "ROMS",    EMU_CMD_ROM_MENU,           472,  84, 118, 36, RGB565(68, 68, 76) },
-    { "SAVE",    EMU_CMD_SAVE_STATE,         208, 156, 118, 36, RGB565(28, 104, 120) },
-    { "LOAD",    EMU_CMD_LOAD_STATE,         340, 156, 118, 36, RGB565(58, 76, 116) },
-    { "DELETE",  EMU_CMD_DELETE_STATE,       472, 156, 118, 36, RGB565(112, 48, 48) },
-    { "FAST",    EMU_CMD_TOGGLE_FAST,        208, 276, 118, 36, RGB565(118, 88, 34) },
-    { "AUDIO",   EMU_CMD_TOGGLE_AUDIO,       340, 276, 118, 36, RGB565(52, 92, 116) },
-    { "VOL-",    EMU_CMD_VOLUME_DOWN,        472, 276, 118, 36, RGB565(70, 70, 84) },
-    { "VOL+",    EMU_CMD_VOLUME_UP,          208, 322, 118, 36, RGB565(70, 70, 84) },
-    { "FSKIP",   EMU_CMD_CYCLE_FRAMESKIP,    340, 322, 118, 36, RGB565(82, 74, 120) },
-    { "FPS",     EMU_CMD_TOGGLE_SHOW_FPS,    472, 322, 118, 36, RGB565(82, 92, 74) },
-    { "SKIP",    EMU_CMD_TOGGLE_SKIP_BIOS,   208, 368, 118, 36, RGB565(82, 86, 68) },
-    { "ASYNC",   EMU_CMD_TOGGLE_AUDIO_SYNC,  340, 368, 118, 36, RGB565(76, 86, 112) },
-    { "VSYNC",   EMU_CMD_TOGGLE_VIDEO_SYNC,  472, 368, 118, 36, RGB565(76, 96, 94) },
+    { "RESUME",  EMU_CMD_RESUME,             208,  68, 118, 36, RGB565(44, 72, 74) },
+    { "ROMS",    EMU_CMD_ROM_MENU,           472,  68, 118, 36, RGB565(68, 68, 76) },
+    { "SAVE",    EMU_CMD_SAVE_STATE,         208, 132, 118, 36, RGB565(28, 104, 120) },
+    { "LOAD",    EMU_CMD_LOAD_STATE,         340, 132, 118, 36, RGB565(58, 76, 116) },
+    { "DELETE",  EMU_CMD_DELETE_STATE,       472, 132, 118, 36, RGB565(112, 48, 48) },
+    { "AUDIO",   EMU_CMD_TOGGLE_AUDIO,       208, 284, 118, 36, RGB565(52, 92, 116) },
+    { "VOL-",    EMU_CMD_VOLUME_DOWN,        340, 284, 118, 36, RGB565(70, 70, 84) },
+    { "VOL+",    EMU_CMD_VOLUME_UP,          472, 284, 118, 36, RGB565(70, 70, 84) },
+    { "FAST",    EMU_CMD_TOGGLE_FAST,        208, 330, 118, 36, RGB565(118, 88, 34) },
+    { "FSKIP",   EMU_CMD_CYCLE_FRAMESKIP,    340, 330, 118, 36, RGB565(82, 74, 120) },
+    { "FPS",     EMU_CMD_TOGGLE_SHOW_FPS,    472, 330, 118, 36, RGB565(82, 92, 74) },
+    { "SCALE",   EMU_CMD_CYCLE_SCALE,        208, 376, 118, 36, RGB565(84, 78, 108) },
+    { "FILTER",  EMU_CMD_TOGGLE_SCALE_LINEAR,340, 376, 118, 36, RGB565(84, 78, 108) },
+    { "SKIP",    EMU_CMD_TOGGLE_SKIP_BIOS,   472, 376, 118, 36, RGB565(82, 86, 68) },
+    { "ASYNC",   EMU_CMD_TOGGLE_AUDIO_SYNC,  208, 422, 118, 36, RGB565(76, 86, 112) },
+    { "VSYNC",   EMU_CMD_TOGGLE_VIDEO_SYNC,  472, 422, 118, 36, RGB565(76, 96, 94) },
 };
 
 static _Atomic uint32_t s_keys;
@@ -202,6 +213,7 @@ static _Atomic bool s_audio_sync;
 static _Atomic bool s_video_sync;
 static _Atomic bool s_show_fps;
 static _Atomic bool s_scale_linear = true;
+static _Atomic uint8_t s_game_scale;
 static _Atomic size_t s_rom_list_offset;
 static _Atomic uint8_t s_state_slot;
 static SemaphoreHandle_t s_ui_lock;
@@ -675,9 +687,14 @@ static void draw_menu_button(const menu_button_t *btn)
         snprintf(state_label, sizeof(state_label), "FPS %s", show ? "ON" : "OFF");
         label = state_label;
         fill = show ? RGB565(70, 118, 62) : RGB565(82, 92, 74);
+    } else if (btn->cmd == EMU_CMD_CYCLE_SCALE) {
+        uint8_t scale = atomic_load(&s_game_scale);
+        snprintf(state_label, sizeof(state_label), "SCALE %ux", (unsigned)scale);
+        label = state_label;
+        fill = scale == 1 ? RGB565(92, 86, 118) : RGB565(46, 112, 126);
     } else if (btn->cmd == EMU_CMD_TOGGLE_SCALE_LINEAR) {
         bool linear = atomic_load(&s_scale_linear);
-        snprintf(state_label, sizeof(state_label), "SCALE %s", linear ? "LIN" : "NN");
+        snprintf(state_label, sizeof(state_label), "%s", linear ? "LIN" : "NN");
         label = state_label;
         fill = linear ? RGB565(46, 112, 126) : RGB565(84, 78, 108);
     }
@@ -838,7 +855,7 @@ static void draw_state_slot_panel(void)
     snprintf(text, sizeof(text), "S%u %s", (unsigned)(slot + 1),
              state_slot_exists(slot) ? "USED" : "EMPTY");
 
-    draw_text(208, 128, "STATE", RGB565(176, 196, 198), 2, 120);
+    draw_text(208, 182, "STATE", RGB565(176, 196, 198), 2, 120);
     fill_rect(208, 202, 118, 36, RGB565(18, 28, 34));
     draw_border(208, 202, 118, 36, RGB565(176, 196, 198));
     draw_soft_button(340, 202, 118, 36, RGB565(54, 64, 72), RGB565(190, 210, 210));
@@ -851,20 +868,21 @@ static void draw_state_slot_panel(void)
 static void draw_game_menu(void)
 {
     ui_lock();
-    fill_rect(188, 52, 424, 386, RGB565(14, 20, 26));
-    draw_border(188, 52, 424, 386, RGB565(190, 206, 210));
+    fill_rect(GAME_MENU_X, GAME_MENU_Y, GAME_MENU_W, GAME_MENU_H, RGB565(14, 20, 26));
+    draw_border(GAME_MENU_X, GAME_MENU_Y, GAME_MENU_W, GAME_MENU_H, RGB565(190, 206, 210));
     const char *title = "GAME MENU";
     int title_w = (int)strlen(title) * FONT_W * FONT_SCALE +
                   ((int)strlen(title) - 1) * FONT_SCALE;
-    draw_text(188 + (424 - title_w) / 2, 62, title, RGB565(238, 244, 232), FONT_SCALE, 252);
+    draw_text(GAME_MENU_X + (GAME_MENU_W - title_w) / 2, GAME_MENU_Y + 10,
+              title, RGB565(238, 244, 232), FONT_SCALE, 252);
 
     for (size_t i = 0; i < sizeof(s_menu_buttons) / sizeof(s_menu_buttons[0]); ++i) {
         draw_menu_button(&s_menu_buttons[i]);
     }
 
     draw_state_slot_panel();
-    draw_text(208, 250, "OPTIONS", RGB565(176, 196, 198), 2, 140);
-    flush_lcd_rect(188, 52, 424, 386);
+    draw_text(208, 258, "OPTIONS", RGB565(176, 196, 198), 2, 140);
+    flush_lcd_rect(GAME_MENU_X, GAME_MENU_Y, GAME_MENU_W, GAME_MENU_H);
     ui_unlock();
 }
 
@@ -878,12 +896,26 @@ static void draw_gba_frame(void)
     }
 
     ui_lock();
-    const int scale = GBA_SCALE;
+    int scale = atomic_load(&s_game_scale);
+    if (scale < MIN_GBA_SCALE || scale > MAX_GBA_SCALE) {
+        scale = DEFAULT_GBA_SCALE;
+    }
     const int out_w = GBA_WIDTH * scale;
     const int out_h = GBA_HEIGHT * scale;
     const int dst_x = (s_lcd_width - out_w) / 2;
     const int dst_y = (s_lcd_height - out_h) / 2;
     s_game_rect = (rect_t) { dst_x, dst_y, out_w, out_h };
+
+    if (scale == 1) {
+        for (int y = 0; y < GBA_HEIGHT; ++y) {
+            const uint16_t *src = (const uint16_t *)&s_render_framebuffer[y * GBA_WIDTH];
+            uint16_t *dst = s_lcd_fb + (dst_y + y) * s_lcd_width + dst_x;
+            memcpy(dst, src, GBA_WIDTH * sizeof(uint16_t));
+        }
+        flush_lcd_rect(s_game_rect.x, s_game_rect.y, s_game_rect.w, s_game_rect.h);
+        ui_unlock();
+        return;
+    }
 
     if (USE_PPA_GAME_SCALE && atomic_load(&s_scale_linear) && s_ppa_srm) {
         // PPA driver does its own input C2M and output M2C cache sync, so the
@@ -1210,6 +1242,16 @@ static void apply_runtime_options(struct mCore *core)
     core->reloadConfigOption(core, NULL, NULL);
 }
 
+static void apply_effective_frameskip(struct mCore *core, uint8_t frameskip)
+{
+    if (!core || core->opts.frameskip == frameskip) {
+        return;
+    }
+
+    core->opts.frameskip = frameskip;
+    core->reloadConfigOption(core, NULL, NULL);
+}
+
 static bool parse_bool_setting(const char *value, bool *out)
 {
     if (!value || !out) {
@@ -1304,6 +1346,11 @@ static void load_settings_from_sd(void)
             if (parse_bool_setting(value, &linear)) {
                 atomic_store(&s_scale_linear, linear);
             }
+        } else if (strcmp(key, "game_scale") == 0) {
+            unsigned scale = (unsigned)strtoul(value, NULL, 10);
+            if (scale >= MIN_GBA_SCALE && scale <= MAX_GBA_SCALE) {
+                atomic_store(&s_game_scale, (uint8_t)scale);
+            }
         }
     }
 
@@ -1328,6 +1375,7 @@ static void save_settings_to_sd(void)
     fprintf(file, "video_sync=%u\n", atomic_load(&s_video_sync) ? 1U : 0U);
     fprintf(file, "show_fps=%u\n", atomic_load(&s_show_fps) ? 1U : 0U);
     fprintf(file, "scale_linear=%u\n", atomic_load(&s_scale_linear) ? 1U : 0U);
+    fprintf(file, "game_scale=%u\n", (unsigned)atomic_load(&s_game_scale));
     fclose(file);
 }
 
@@ -2596,7 +2644,10 @@ static void emu_task(void *arg)
         const int64_t frame_us = 1000000 / GBA_FPS;
         uint32_t frame_count = 0;
         uint32_t frames_this_second = 0;
-        uint32_t display_interval = ((uint32_t)atomic_load(&s_frameskip) + 1) * DISPLAY_FRAME_DIV;
+        uint8_t requested_frameskip = atomic_load(&s_frameskip);
+        uint8_t effective_frameskip = requested_frameskip;
+        uint8_t auto_fskip_stable_seconds = 0;
+        uint32_t display_interval = ((uint32_t)effective_frameskip + 1) * DISPLAY_FRAME_DIV;
         uint32_t display_countdown = display_interval;
         int64_t fps_time = esp_timer_get_time();
         int64_t next_frame = esp_timer_get_time();
@@ -2615,6 +2666,9 @@ static void emu_task(void *arg)
                     audio_menu_paused = false;
                     core->opts.mute = !atomic_load(&s_audio_enabled);
                     apply_audio_volume(core);
+                    frames_this_second = 0;
+                    fps_time = esp_timer_get_time();
+                    next_frame = fps_time;
                     redraw_game_screen();
                     break;
                 case EMU_CMD_SAVE_STATE:
@@ -2627,6 +2681,9 @@ static void emu_task(void *arg)
                     audio_menu_paused = false;
                     core->opts.mute = !atomic_load(&s_audio_enabled);
                     apply_audio_volume(core);
+                    frames_this_second = 0;
+                    fps_time = esp_timer_get_time();
+                    next_frame = fps_time;
                     redraw_game_screen();
                     break;
                 }
@@ -2640,6 +2697,9 @@ static void emu_task(void *arg)
                     audio_menu_paused = false;
                     core->opts.mute = !atomic_load(&s_audio_enabled);
                     apply_audio_volume(core);
+                    frames_this_second = 0;
+                    fps_time = esp_timer_get_time();
+                    next_frame = fps_time;
                     redraw_game_screen();
                     break;
                 }
@@ -2686,9 +2746,13 @@ static void emu_task(void *arg)
                 {
                     uint8_t frameskip = atomic_load(&s_frameskip);
                     atomic_store(&s_frameskip, (uint8_t)((frameskip + 1) % (MAX_FRAMESKIP + 1)));
-                    display_interval = ((uint32_t)atomic_load(&s_frameskip) + 1) * DISPLAY_FRAME_DIV;
+                    requested_frameskip = atomic_load(&s_frameskip);
+                    effective_frameskip = requested_frameskip;
+                    auto_fskip_stable_seconds = 0;
+                    display_interval = ((uint32_t)effective_frameskip + 1) * DISPLAY_FRAME_DIV;
                     display_countdown = display_interval;
                     apply_runtime_options(core);
+                    apply_effective_frameskip(core, effective_frameskip);
                     save_settings_to_sd();
                     draw_game_menu();
                     break;
@@ -2727,6 +2791,15 @@ static void emu_task(void *arg)
                     save_settings_to_sd();
                     draw_game_menu();
                     break;
+                case EMU_CMD_CYCLE_SCALE:
+                {
+                    uint8_t scale = atomic_load(&s_game_scale);
+                    scale = scale >= MAX_GBA_SCALE ? MIN_GBA_SCALE : (uint8_t)(scale + 1);
+                    atomic_store(&s_game_scale, scale);
+                    save_settings_to_sd();
+                    draw_game_menu();
+                    break;
+                }
                 case EMU_CMD_ROM_MENU:
                     audio_codec_set_paused(true);
                     core->opts.mute = true;
@@ -2751,6 +2824,8 @@ static void emu_task(void *arg)
                 }
                 vTaskDelay(pdMS_TO_TICKS(15));
                 next_frame = esp_timer_get_time();
+                fps_time = next_frame;
+                frames_this_second = 0;
                 continue;
             }
 
@@ -2772,12 +2847,40 @@ static void emu_task(void *arg)
             }
 
             int64_t now = esp_timer_get_time();
-            if (atomic_load(&s_show_fps) && now - fps_time >= 1000000) {
-                float fps = (float)frames_this_second * 1000000.0f / (float)(now - fps_time);
-                draw_fps(fps);
-                frames_this_second = 0;
-                fps_time = now;
-            } else if (!atomic_load(&s_show_fps) && now - fps_time >= 1000000) {
+            if (now - fps_time >= 1000000) {
+                int64_t fps_window_us = now - fps_time;
+                float fps = (float)frames_this_second * 1000000.0f / (float)fps_window_us;
+#if AUTO_FRAMESKIP
+                if (!atomic_load(&s_fast_forward)) {
+                    requested_frameskip = atomic_load(&s_frameskip);
+                    uint8_t new_frameskip = effective_frameskip;
+                    if (fps < AUTO_FSKIP_DOWN_FPS && effective_frameskip < MAX_FRAMESKIP) {
+                        new_frameskip = effective_frameskip + 1;
+                        auto_fskip_stable_seconds = 0;
+                    } else if (fps > AUTO_FSKIP_UP_FPS && effective_frameskip > requested_frameskip) {
+                        if (++auto_fskip_stable_seconds >= 3) {
+                            new_frameskip = effective_frameskip - 1;
+                            auto_fskip_stable_seconds = 0;
+                        }
+                    } else if (fps < AUTO_FSKIP_UP_FPS) {
+                        auto_fskip_stable_seconds = 0;
+                    }
+
+                    if (new_frameskip != effective_frameskip) {
+                        effective_frameskip = new_frameskip;
+                        display_interval = ((uint32_t)effective_frameskip + 1) * DISPLAY_FRAME_DIV;
+                        if (display_countdown > display_interval) {
+                            display_countdown = display_interval;
+                        }
+                        apply_effective_frameskip(core, effective_frameskip);
+                        ESP_LOGI(TAG, "Auto frameskip: requested=%u effective=%u fps=%.1f",
+                                 (unsigned)requested_frameskip, (unsigned)effective_frameskip, (double)fps);
+                    }
+                }
+#endif
+                if (atomic_load(&s_show_fps)) {
+                    draw_fps(fps);
+                }
                 frames_this_second = 0;
                 fps_time = now;
             }
@@ -2822,6 +2925,8 @@ void app_main(void)
     atomic_store(&s_audio_sync, false);
     atomic_store(&s_video_sync, false);
     atomic_store(&s_show_fps, false);
+    atomic_store(&s_scale_linear, true);
+    atomic_store(&s_game_scale, DEFAULT_GBA_SCALE);
 
     s_ui_lock = xSemaphoreCreateMutex();
     if (!s_ui_lock) {
