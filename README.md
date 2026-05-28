@@ -28,20 +28,43 @@
 
 ## 编译和烧录
 
-先进入 ESP-IDF 环境，然后在项目根目录执行：
+先进入 ESP-IDF 环境，然后在项目根目录执行。首次编译建议按下面顺序走一遍：
 
 ```sh
 idf.py set-target esp32s31
+idf.py reconfigure
+idf.py bmgr -b esp32_s31_korvo1
 idf.py build
 idf.py flash monitor
 ```
 
-如果已经使用本项目的 `sdkconfig`，通常可以直接执行：
+`idf.py bmgr -b esp32_s31_korvo1` 会根据 `components/esp32_s31_korvo1` 中的板级 YAML 和 `setup_device.c` 生成 Board Manager 配置代码，输出目录为 `components/gen_bmgr_codes`。
+
+本项目已经提交了生成后的 `components/gen_bmgr_codes`，如果没有修改板级配置，通常可以直接编译：
 
 ```sh
 idf.py build
 idf.py flash monitor
 ```
+
+如果修改了下面这些板级文件，需要重新生成配置后再编译：
+
+```text
+components/esp32_s31_korvo1/board_info.yaml
+components/esp32_s31_korvo1/board_peripherals.yaml
+components/esp32_s31_korvo1/board_devices.yaml
+components/esp32_s31_korvo1/sdkconfig.defaults.board
+components/esp32_s31_korvo1/setup_device.c
+```
+
+重新生成命令：
+
+```sh
+idf.py bmgr -b esp32_s31_korvo1
+idf.py build
+```
+
+不要手动修改 `managed_components/espressif__esp_board_manager/boards/esp32_s31_korvo1`，`managed_components` 是 IDF 组件管理器下载的依赖目录，重新拉取依赖时可能被覆盖。需要上传或维护板子配置时，请修改 `components/esp32_s31_korvo1`。
 
 ## SD 卡文件
 
