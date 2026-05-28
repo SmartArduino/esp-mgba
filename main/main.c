@@ -49,7 +49,7 @@
 #define GBA_HEIGHT         160
 #define GBA_SCALE          2
 #define GBA_FPS            60
-#define DEFAULT_FRAMESKIP  0
+#define DEFAULT_FRAMESKIP  1
 #define MAX_FRAMESKIP      5
 #define DISPLAY_FRAME_DIV  1
 #define ROM_DIR            "/sdcard"
@@ -2597,10 +2597,12 @@ static void emu_task(void *arg)
         uint32_t frame_count = 0;
         uint32_t frames_this_second = 0;
         uint32_t display_interval = ((uint32_t)atomic_load(&s_frameskip) + 1) * DISPLAY_FRAME_DIV;
+        uint32_t display_countdown = display_interval;
         int64_t fps_time = esp_timer_get_time();
         int64_t next_frame = esp_timer_get_time();
         bool return_to_rom_menu = false;
         mColor *last_video_buffer = NULL;
+        uint32_t last_emu_keys = UINT32_MAX;
         bool audio_menu_paused = false;
 
         while (!return_to_rom_menu) {
@@ -2685,6 +2687,7 @@ static void emu_task(void *arg)
                     uint8_t frameskip = atomic_load(&s_frameskip);
                     atomic_store(&s_frameskip, (uint8_t)((frameskip + 1) % (MAX_FRAMESKIP + 1)));
                     display_interval = ((uint32_t)atomic_load(&s_frameskip) + 1) * DISPLAY_FRAME_DIV;
+                    display_countdown = display_interval;
                     apply_runtime_options(core);
                     save_settings_to_sd();
                     draw_game_menu();
@@ -2755,12 +2758,17 @@ static void emu_task(void *arg)
                 core->setVideoBuffer(core, s_active_framebuffer, GBA_WIDTH);
                 last_video_buffer = s_active_framebuffer;
             }
-            core->setKeys(core, atomic_load(&s_keys));
+            uint32_t keys = atomic_load(&s_keys);
+            if (keys != last_emu_keys) {
+                core->setKeys(core, keys);
+                last_emu_keys = keys;
+            }
             core->runFrame(core);
             ++frame_count;
             ++frames_this_second;
-            if ((frame_count % display_interval) == 0) {
+            if (--display_countdown == 0) {
                 request_render_frame();
+                display_countdown = display_interval;
             }
 
             int64_t now = esp_timer_get_time();
@@ -2781,7 +2789,9 @@ static void emu_task(void *arg)
                     vTaskDelay(pdMS_TO_TICKS((delay_us + 999) / 1000));
                 } else {
                     next_frame = esp_timer_get_time();
-                    vTaskDelay(1);
+                    if ((frame_count & 0x0f) == 0) {
+                        taskYIELD();
+                    }
                 }
             } else {
                 next_frame = esp_timer_get_time();

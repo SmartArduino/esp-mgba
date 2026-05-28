@@ -38,8 +38,32 @@ idf_component_register(
 if(NOT CMAKE_SCRIPT_MODE_FILE)
     target_link_libraries(${COMPONENT_LIB} PRIVATE mgba-esp)
     target_link_libraries(mgba-esp idf::heap)
-    target_compile_options(${COMPONENT_LIB} PRIVATE -O3 -fno-unwind-tables -fno-asynchronous-unwind-tables)
-    target_compile_options(mgba-esp PRIVATE -O3 -fno-unwind-tables -fno-asynchronous-unwind-tables)
+    set(MGBA_ESP_FAST_OPTIONS
+        -O3
+        -fomit-frame-pointer
+        -fno-unwind-tables
+        -fno-asynchronous-unwind-tables
+        -fno-math-errno
+    )
+    target_compile_options(${COMPONENT_LIB} PRIVATE ${MGBA_ESP_FAST_OPTIONS})
+    target_compile_options(mgba-esp PRIVATE ${MGBA_ESP_FAST_OPTIONS})
+    set_source_files_properties(
+        "${MGBA_DIR}/src/arm/arm.c"
+        "${MGBA_DIR}/src/arm/isa-arm.c"
+        "${MGBA_DIR}/src/arm/isa-thumb.c"
+        "${MGBA_DIR}/src/gba/core.c"
+        "${MGBA_DIR}/src/gba/dma.c"
+        "${MGBA_DIR}/src/gba/gba.c"
+        "${MGBA_DIR}/src/gba/io.c"
+        "${MGBA_DIR}/src/gba/memory.c"
+        "${MGBA_DIR}/src/gba/timer.c"
+        "${MGBA_DIR}/src/gba/video.c"
+        "${MGBA_DIR}/src/gba/renderers/software-bg.c"
+        "${MGBA_DIR}/src/gba/renderers/software-mode0.c"
+        "${MGBA_DIR}/src/gba/renderers/software-obj.c"
+        "${MGBA_DIR}/src/gba/renderers/video-software.c"
+        PROPERTIES COMPILE_OPTIONS "${MGBA_ESP_FAST_OPTIONS}"
+    )
     target_sources(mgba-esp PRIVATE
         "${MGBA_DIR}/src/util/vfs/vfs-file.c"
         "${MGBA_DIR}/src/util/vfs/vfs-dirent.c"
@@ -58,6 +82,7 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     )
     target_compile_definitions(mgba-esp PRIVATE
         _GNU_SOURCE
+        NDEBUG
         PATH_MAX=256
         crc32=mgba_crc32
         # MGBA_ESP_FAST_AUDIO_OFF
