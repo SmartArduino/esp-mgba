@@ -144,6 +144,7 @@ typedef enum {
     EMU_CMD_TOGGLE_AUDIO_SYNC,
     EMU_CMD_TOGGLE_VIDEO_SYNC,
     EMU_CMD_TOGGLE_SHOW_FPS,
+    EMU_CMD_TOGGLE_SCALE_LINEAR,
     EMU_CMD_ROM_MENU,
 } emu_cmd_t;
 
@@ -173,6 +174,7 @@ static const pad_button_t s_buttons[] = {
 
 static const menu_button_t s_menu_buttons[] = {
     { "RESUME",  EMU_CMD_RESUME,             208,  84, 118, 36, RGB565(44, 72, 74) },
+    { "SCALE",   EMU_CMD_TOGGLE_SCALE_LINEAR,340,  84, 118, 36, RGB565(84, 78, 108) },
     { "ROMS",    EMU_CMD_ROM_MENU,           472,  84, 118, 36, RGB565(68, 68, 76) },
     { "SAVE",    EMU_CMD_SAVE_STATE,         208, 156, 118, 36, RGB565(28, 104, 120) },
     { "LOAD",    EMU_CMD_LOAD_STATE,         340, 156, 118, 36, RGB565(58, 76, 116) },
@@ -199,6 +201,7 @@ static _Atomic bool s_skip_bios;
 static _Atomic bool s_audio_sync;
 static _Atomic bool s_video_sync;
 static _Atomic bool s_show_fps;
+static _Atomic bool s_scale_linear = true;
 static _Atomic size_t s_rom_list_offset;
 static _Atomic uint8_t s_state_slot;
 static SemaphoreHandle_t s_ui_lock;
@@ -672,6 +675,11 @@ static void draw_menu_button(const menu_button_t *btn)
         snprintf(state_label, sizeof(state_label), "FPS %s", show ? "ON" : "OFF");
         label = state_label;
         fill = show ? RGB565(70, 118, 62) : RGB565(82, 92, 74);
+    } else if (btn->cmd == EMU_CMD_TOGGLE_SCALE_LINEAR) {
+        bool linear = atomic_load(&s_scale_linear);
+        snprintf(state_label, sizeof(state_label), "SCALE %s", linear ? "LIN" : "NN");
+        label = state_label;
+        fill = linear ? RGB565(46, 112, 126) : RGB565(84, 78, 108);
     }
 
     draw_soft_button(btn->x, btn->y, btn->w, btn->h, fill, RGB565(210, 220, 220));
@@ -877,7 +885,7 @@ static void draw_gba_frame(void)
     const int dst_y = (s_lcd_height - out_h) / 2;
     s_game_rect = (rect_t) { dst_x, dst_y, out_w, out_h };
 
-    if (USE_PPA_GAME_SCALE && s_ppa_srm) {
+    if (USE_PPA_GAME_SCALE && atomic_load(&s_scale_linear) && s_ppa_srm) {
         // PPA driver does its own input C2M and output M2C cache sync, so the
         // explicit flushes here would just walk thousands of cache lines for
         // no benefit. CPU does not read the LCD framebuffer game area, so no
@@ -1291,6 +1299,11 @@ static void load_settings_from_sd(void)
             if (parse_bool_setting(value, &show)) {
                 atomic_store(&s_show_fps, show);
             }
+        } else if (strcmp(key, "scale_linear") == 0) {
+            bool linear;
+            if (parse_bool_setting(value, &linear)) {
+                atomic_store(&s_scale_linear, linear);
+            }
         }
     }
 
@@ -1314,6 +1327,7 @@ static void save_settings_to_sd(void)
     fprintf(file, "audio_sync=%u\n", atomic_load(&s_audio_sync) ? 1U : 0U);
     fprintf(file, "video_sync=%u\n", atomic_load(&s_video_sync) ? 1U : 0U);
     fprintf(file, "show_fps=%u\n", atomic_load(&s_show_fps) ? 1U : 0U);
+    fprintf(file, "scale_linear=%u\n", atomic_load(&s_scale_linear) ? 1U : 0U);
     fclose(file);
 }
 
@@ -2703,6 +2717,11 @@ static void emu_task(void *arg)
                         flush_lcd_rect(650, 72, 132, 30);
                         ui_unlock();
                     }
+                    draw_game_menu();
+                    break;
+                case EMU_CMD_TOGGLE_SCALE_LINEAR:
+                    atomic_store(&s_scale_linear, !atomic_load(&s_scale_linear));
+                    save_settings_to_sd();
                     draw_game_menu();
                     break;
                 case EMU_CMD_ROM_MENU:
