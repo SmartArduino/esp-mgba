@@ -4,6 +4,16 @@
 
 工程把 mGBA 裁剪为 GBA core，并针对 ESP32-S31 做了 PSRAM、PPA 放大显示、音频重采样、SD 卡 ROM 读取和触摸虚拟按键等适配。
 
+## 运行效果
+
+| 牧场物语 | 宝可梦绿宝石 |
+| --- | --- |
+| ![牧场物语](image/image0.jpg) | ![宝可梦绿宝石](image/image1.jpg) |
+
+| 逆转裁判 | 塞尔达缩小帽 |
+| --- | --- |
+| ![逆转裁判](image/iamge2.jpg) | ![塞尔达缩小帽](image/iamge3.jpg) |
+
 ## 功能特性
 
 - 支持 GBA ROM 运行。
